@@ -29,7 +29,7 @@ The system respects the following real-world operational rules:
 
 1.  **Clone the repository:**
     ```bash
-    git clone [https://github.com/YourUsername/multimedia-streaming-system.git](https://github.com/YourUsername/multimedia-streaming-system.git)
+    git clone [https://github.com/Kaladin2003/multimedia-streaming-system.git](https://github.com/Kaladin2003/multimedia-streaming-system.git)
     cd multimedia-streaming-system
     ```
 
