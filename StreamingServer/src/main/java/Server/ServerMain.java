@@ -6,16 +6,21 @@ import org.apache.logging.log4j.Logger;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Pattern;
 
 public class ServerMain {
-    // Logger for server 
+    // Logger for server
     private static final Logger logger = LogManager.getLogger(ServerMain.class);
     
 
     private static final int PORT = 9000;
-    private static final String VIDEO_FOLDER = "videos";
+    private static final String VIDEO_FOLDER = "Videos";
     private static final String[] FORMATS = {"mp4", "mkv", "avi"};
     private static final String[] RESOLUTIONS = {"240p", "360p", "480p", "720p", "1080p"};
+    // IPv4 literal, so a hostname cannot trigger a DNS lookup
+    private static final Pattern IPV4 = Pattern.compile("(\\d{1,3}\\.){3}\\d{1,3}");
 
     public static void main(String[] args) {
         logger.info("Starting server and checking for missing video formats...");
@@ -66,30 +71,38 @@ public class ServerMain {
                 String clientIP = dis.readUTF();
                 String protocol = dis.readUTF();
 
-                String filePath = VIDEO_FOLDER + File.separator + fileName;
-                String ffmpegCommand;
+                // Reject path traversal (e.g. "../../secret.txt") and unknown files
+                File videoFile = new File(VIDEO_FOLDER, fileName);
+                if (!isVideoInFolder(videoFile)) {
+                    logger.warn("Rejected stream request for invalid file: {}", fileName);
+                    return;
+                }
+                if (!isValidIPv4(clientIP)) {
+                    logger.warn("Rejected stream request with invalid client IP: {}", clientIP);
+                    return;
+                }
+
+                String filePath = videoFile.getPath();
                 String sdpFileName = "stream_" + clientIP.replace(".", "_") + ".sdp";
 
-                
+                // Pass arguments as a list: no shell parsing, and paths with spaces work
+                List<String> ffmpegCommand = new ArrayList<>(List.of("ffmpeg", "-re", "-i", filePath));
                 switch (protocol.toLowerCase()) {
                     case "udp":
-                        ffmpegCommand = String.format("ffmpeg -re -i \"%s\" -f avi udp://%s:1234", 
-                            filePath, clientIP);
+                        ffmpegCommand.addAll(List.of("-f", "avi", "udp://" + clientIP + ":1234"));
                         break;
                     case "tcp":
-                        ffmpegCommand = String.format("ffmpeg -re -i \"%s\" -f avi tcp://0.0.0.0:1234?listen", 
-                            filePath);
+                        ffmpegCommand.addAll(List.of("-f", "avi", "tcp://0.0.0.0:1234?listen"));
                         break;
                     case "rtp":
-                        //  SDP file for RTP 
+                        // SDP file for RTP
                         String sdpContent = createSDPContent(clientIP);
                         dos.writeUTF(sdpContent);
                         dos.writeUTF("END_SDP");
                         dos.flush();
 
-                        ffmpegCommand = String.format(
-                            "ffmpeg -re -i \"%s\" -an -c:v copy -f rtp -sdp_file %s \"rtp://%s:5004?rtcpport=5008\"",
-                            filePath, sdpFileName, clientIP);
+                        ffmpegCommand.addAll(List.of("-an", "-c:v", "copy", "-f", "rtp",
+                            "-sdp_file", sdpFileName, "rtp://" + clientIP + ":5004?rtcpport=5008"));
                         break;
                     default:
                         logger.error("Unsupported protocol: {}", protocol);
@@ -97,8 +110,8 @@ public class ServerMain {
                 }
 
                 // Start FFmpeg streaming process
-                logger.info("Executing ffmpeg command: {}", ffmpegCommand);
-                ProcessBuilder pb = new ProcessBuilder(ffmpegCommand.split(" "));
+                logger.info("Executing ffmpeg command: {}", String.join(" ", ffmpegCommand));
+                ProcessBuilder pb = new ProcessBuilder(ffmpegCommand);
                 pb.inheritIO();
                 pb.start();
 
@@ -119,8 +132,9 @@ public class ServerMain {
         if (!folder.exists()) return;
 
         
-        File[] originals = folder.listFiles((dir, name) -> 
-            !name.matches(".*[-_](240p|360p|480p|720p|1080p)\\.(mp4|mkv|avi)"));
+        File[] originals = folder.listFiles((dir, name) ->
+            name.matches(".*\\.(mp4|mkv|avi)")
+                && !name.matches(".*[-_](240p|360p|480p|720p|1080p)\\.(mp4|mkv|avi)"));
 
         if (originals == null) return;
 
@@ -141,14 +155,14 @@ public class ServerMain {
         }
     }
 
-    // Video conversiond
+    // Video conversion
     private static void convertVideo(File input, File output, String scale) {
-        String cmd = String.format("ffmpeg -i \"%s\" -vf scale=%s \"%s\"", 
-            input.getAbsolutePath(), scale, output.getAbsolutePath());
+        List<String> cmd = List.of("ffmpeg", "-i", input.getAbsolutePath(),
+            "-vf", "scale=" + scale, output.getAbsolutePath());
 
         try {
             logger.info("Creating: {}", output.getName());
-            Process process = new ProcessBuilder(cmd.split(" ")).inheritIO().start();
+            Process process = new ProcessBuilder(cmd).inheritIO().start();
             process.waitFor();
         } catch (Exception e) {
             logger.error("Error converting video {}: ", input.getName(), e);
@@ -202,8 +216,25 @@ public class ServerMain {
     }
 
     
+    // True only for an existing video file directly inside VIDEO_FOLDER
+    private static boolean isVideoInFolder(File file) throws IOException {
+        File folder = new File(VIDEO_FOLDER).getCanonicalFile();
+        File canonical = file.getCanonicalFile();
+        return folder.equals(canonical.getParentFile())
+            && canonical.isFile()
+            && canonical.getName().matches(".*\\.(mp4|mkv|avi)");
+    }
+
+    private static boolean isValidIPv4(String ip) {
+        if (ip == null || !IPV4.matcher(ip).matches()) return false;
+        for (String part : ip.split("\\.")) {
+            if (Integer.parseInt(part) > 255) return false;
+        }
+        return true;
+    }
+
     private static String getCleanBaseName(String fileName) {
         String name = fileName.replaceAll("[-_](240p|360p|480p|720p|1080p)", "");
         return name.replaceAll("\\.[^.]+$", "");  
     }
-}
+}

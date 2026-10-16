@@ -18,34 +18,55 @@ The system respects the following real-world operational rules:
 
 ## Technologies
 
-* **Language:** Java (JDK 21+)
-* **Core Tool:** [FFmpeg & FFplay](https://ffmpeg.org/) (Media processing & playback)
+* **Language:** Java 17+
+* **Build:** Maven
+* **Core tool:** [FFmpeg & FFplay](https://ffmpeg.org/) (media processing and playback)
 * **Libraries:**
-    * `org.apache.logging.log4j` (Server Logging)
-    * `fr.bmartel.speedtest` (Network Diagnostics)
+    * `org.apache.logging.log4j` 2.24 (server logging)
+    * `fr.bmartel.jspeedtest` (network diagnostics)
 * **GUI:** Java Swing
 
-## Installation & Usage
+## Project structure
 
-1.  **Clone the repository:**
+```text
+StreamingServer/
+  src/main/java/Server/ServerMain.java   # socket server, FFmpeg conversion and streaming
+  Videos/                                # source videos (converted copies are generated on startup)
+StreamingClient/
+  src/main/java/client/ClientMain.java   # Swing client, speed test, FFplay playback
+```
+
+## Security
+
+* The server streams only video files that exist directly inside `Videos/`. Requests such as `../secret.txt` are rejected.
+* The client IP must be a valid IPv4 address before it is used in an FFmpeg URL.
+* FFmpeg runs with an argument list, not a command string, so file names with spaces work and nothing is parsed by a shell.
+* Log4j is pinned to 2.24.x. Versions before 2.17.1 are vulnerable to Log4Shell (CVE-2021-44228).
+
+## Installation & usage
+
+1. **Install prerequisites:** JDK 17+, Maven, and FFmpeg (with `ffmpeg` and `ffplay` on your PATH).
+
+2. **Clone the repository:**
     ```bash
-    git clone [https://github.com/Kaladin2003/multimedia-streaming-system.git](https://github.com/Kaladin2003/multimedia-streaming-system.git)
+    git clone https://github.com/Kaladin2003/multimedia-streaming-system.git
     cd multimedia-streaming-system
     ```
 
-2.  **Prerequisites:**
-    * Ensure **FFmpeg** is installed and added to your system PATH.
-    * Install Maven dependencies using your IDE or command line.
-
-3.  **Run the Server:**
+3. **Run the server** (port 9000). On first start it converts every video in `Videos/` to all missing formats and resolutions:
     ```bash
-    # Navigate to Server directory and run ServerMain
-    java Server.ServerMain
+    cd StreamingServer
+    mvn compile exec:java
     ```
-    *The server will start on port 9000 and convert missing videos.*
 
-4.  **Run the Client:**
+4. **Run the client** in a second terminal:
     ```bash
-    # Navigate to Client directory and run ClientMain
-    java client.ClientMain
+    cd StreamingClient
+    mvn compile exec:java
     ```
+
+5. In the client, click **Fetch Video List**, choose a video and a protocol (UDP, TCP or RTP), then click **Start Streaming**.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).

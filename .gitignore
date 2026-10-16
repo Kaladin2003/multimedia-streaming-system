@@ -21,8 +21,12 @@ target/
 # --- Video Files ---
 # Ignore the auto-converted video resolutions to save space on GitHub
 # (We only keep the original files)
-StreamingServer/videos/*-240p.*
-StreamingServer/videos/*-360p.*
-StreamingServer/videos/*-480p.*
-StreamingServer/videos/*-720p.*
-StreamingServer/videos/*-1080p.*
+StreamingServer/Videos/*-240p.*
+StreamingServer/Videos/*-360p.*
+StreamingServer/Videos/*-480p.*
+StreamingServer/Videos/*-720p.*
+StreamingServer/Videos/*-1080p.*
+
+# --- Client output ---
+# Videos and SDP files saved by the client during testing
+StreamingClient/received*
